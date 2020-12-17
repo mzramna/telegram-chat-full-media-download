@@ -94,6 +94,8 @@ async def main(threads):
 
 if __name__ == "__main__":
     while True:#due to an telegram life time of session or something like that this is necessary to completly download media
+        # the error shows this return code : The file reference has expired and is no longer valid or it belongs to self-destructing media and cannot be resent (caused by GetFileRequest)
+        # to avid this,just restart the script or wait until it finishes each while loop run
         loop=asyncio.get_event_loop()
         loop.run_until_complete(main(total_threads))
         loop.close()
