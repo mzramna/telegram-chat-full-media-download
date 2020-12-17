@@ -15,6 +15,13 @@ PROXYPASSWORD=""
 show_progress=True
 #logging.basicConfig(level=logging.DEBUG)
 
+def clean_temporary():
+    files_in_directory = os.listdir(folder)
+    filtered_files = [file for file in files_in_directory if file.endswith(".tmp")]
+    for file in filtered_files:
+        path_to_file = os.path.join(directory, file)
+        os.remove(path_to_file)
+
 def order(element):
     return element.document.size
 
@@ -99,3 +106,4 @@ if __name__ == "__main__":
         loop=asyncio.get_event_loop()
         loop.run_until_complete(main(total_threads))
         loop.close()
+        clean_temporary()
