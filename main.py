@@ -15,15 +15,41 @@ PROXYPASSWORD=""
 show_progress=True
 #logging.basicConfig(level=logging.DEBUG)
 
+
 def clean_temporary():
     files_in_directory = os.listdir(folder)
     filtered_files = [file for file in files_in_directory if file.endswith(".tmp")]
     for file in filtered_files:
-        path_to_file = os.path.join(directory, file)
+        path_to_file = os.path.join(folder, file)
         os.remove(path_to_file)
-
+        
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+        
 def order(element):
     return element.document.size
+
+async def get_messages(client):
+    messages=[]
+    for chanel in chanels:
+        tmp1=0
+        total_messages=await client.get_messages(chanel)
+        total_messages=total_messages.total
+        async for a in client.iter_messages(chanel):
+            if type(a.media) is telethon.tl.types.MessageMediaDocument:
+                for i in a.media.document.attributes:
+                    if type(i) is telethon.tl.types.DocumentAttributeFilename:
+                        if not os.path.isfile(folder+str(a.id) + "_" + str(i.file_name)):
+                            messages.append(a)
+            print("processed "+str(tmp1)+" of "+str(total_messages)+" messages", end="\r")
+            tmp1+=1
+        print("processed "+str(tmp1)+" of "+str(total_messages)+" messages", end="\r")
+        print()
+    messages.sort(key=order)
+    
+    return messages
 
 async def callback(current, total):
     print('Downloaded', current, 'out of', total,
@@ -66,7 +92,7 @@ async def download_list(client,messages):
     for message in messages:
         await download(client,message)
 
-async def main(threads):
+async def main_splited_array(threads):
 #    if PROXYHOST == PROXYUSERNAME == PROXYPASSWORD == "":
 #        client = TelegramClient("session_file", api_id, api_hash,
 #                            proxy=(socks.SOCKS5, PROXYHOST, PORT, PROXYUSERNAME, PROXYPASSWORD)
@@ -74,20 +100,8 @@ async def main(threads):
 #    else:
     client = TelegramClient("session_file", api_id, api_hash)
     await client.start()
-    messages=[]
-    for chanel in chanels:
-        async for a in client.iter_messages(chanel):
-            #for i in a.media:
-            #    print(str(type(i))+str(i))
-            #if type(a.media) is telethon.tl.types.MessageMediaDocument:
-            
-            if type(a.media) is telethon.tl.types.MessageMediaDocument:
-                for i in a.media.document.attributes:
-                    if type(i) is telethon.tl.types.DocumentAttributeFilename:
-                        if not os.path.isfile(folder+str(a.id) + "_" + str(i.file_name)):
-                            messages.append(a)
-                #print(a.document.size)
-    messages.sort(key=order)
+    messages=await get_messages(client)
+    #splited_array=chunks(messages,total_elements)
     process=[]
     init=0
     final=int(len(messages)/threads)
@@ -96,14 +110,43 @@ async def main(threads):
         print("init=" + str(init) + "  final=" + str(final))
         init=final
         final=int(final+len(messages)/threads)
-
+    print("total threads="+str(len(process)))
+    print("total elements="+str(len(messages)))
     await asyncio.gather(*process)
 
+async def main_single_array(threads):
+#    if PROXYHOST == PROXYUSERNAME == PROXYPASSWORD == "":
+#        client = TelegramClient("session_file", api_id, api_hash,
+#                            proxy=(socks.SOCKS5, PROXYHOST, PORT, PROXYUSERNAME, PROXYPASSWORD)
+#                            )
+#    else:
+    client = TelegramClient("session_file", api_id, api_hash)
+    await client.start()
+    messages=await get_messages(client)
+    process=[]
+    total_elements=len(messages)
+    print("total elements="+str(total_elements))
+    last_processed=0
+    while last_processed<=total_elements:
+        print(messages[last_processed])
+        print(len([task for task in asyncio.all_tasks() if not task.done()]))
+        if len([task for task in asyncio.all_tasks() if not task.done()])<threads:
+            loop.run_until_complete(asyncio.create_task(download(client,messages[last_processed])))
+            last_processed+=1
+        else:
+            while not len([task for task in asyncio.all_tasks() if not task.done()])<threads:
+                time.sleep(1)
+            #for task in asyncio.all_tasks():
+            #    if task.done():
+            #        process.remove(task)
+    #await asyncio.gather(*process)
+
 if __name__ == "__main__":
+    loop=asyncio.get_event_loop()
     while True:#due to an telegram life time of session or something like that this is necessary to completly download media
         # the error shows this return code : The file reference has expired and is no longer valid or it belongs to self-destructing media and cannot be resent (caused by GetFileRequest)
         # to avid this,just restart the script or wait until it finishes each while loop run
-        loop=asyncio.get_event_loop()
-        loop.run_until_complete(main(total_threads))
-        loop.close()
         clean_temporary()
+        loop.run_until_complete(main_splited_array(total_threads))
+    loop.close()
+        
